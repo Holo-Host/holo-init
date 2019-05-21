@@ -3,11 +3,10 @@ package cmd
 import (
 	"bytes"
 	"fmt"
-	"syscall"
 
-	//"os/exec"
 	"log"
 	"net/http"
+	"regexp"
 
 	"encoding/json"
 	"errors"
@@ -17,26 +16,42 @@ import (
 	"github.com/spf13/cobra"
 )
 
-//type pepper struct {
-//	Name     string
-//	HeatUnit int
-//	Peppers  int
-//}
 func init() {
 	rootCmd.AddCommand(initCmd)
 }
+
 func HcKeyGen() {
-	cmd := exec.Command("/run/current-system/sw/bin/whoami")
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(401), Gid: uint32(501), NoSetGroups: false}
-	var outb, errb bytes.Buffer
-	cmd.Stdout = &outb
-	cmd.Stderr = &errb
-	err := cmd.Run()
-	if err != nil {
-		log.Fatal(err)
+	lscmd := exec.Command("sudo", "-u", "holochain", "ls", "/home/holochain/.config/holochain/keys")
+	var stdout, stderr bytes.Buffer
+	lscmd.Stdout = &stdout
+	lscmd.Stderr = &stderr
+	lserr := lscmd.Run()
+	if lserr != nil {
+		fmt.Println(lserr)
 	}
-	fmt.Println("out:", outb.String(), "err:", errb.String())
+	outStr, errStr := string(stdout.Bytes()), string(stderr.Bytes())
+	fmt.Printf("current keys:\n%s\n", outStr)
+	if errStr != "" {
+		fmt.Println(errStr)
+	}
+	matched, merr := regexp.MatchString(`Hc.*`, outStr)
+	fmt.Println(matched, merr)
+	if matched != true {
+		cmd := exec.Command("sudo", "-u", "holochain", "hc", "keygen", "-n")
+		//cmd.SysProcAttr = &syscall.SysProcAttr{}
+		//cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(401), Gid: uint32(501), NoSetGroups: false}
+		var outb, errb bytes.Buffer
+		cmd.Stdout = &outb
+		cmd.Stderr = &errb
+		err := cmd.Run()
+		if err != nil {
+			//log.Fatal(errb.String())
+		}
+		fmt.Println("out:", outb.String(), "err:", errb.String())
+	} else {
+		fmt.Println("Your already have existing keys")
+	}
+	return
 }
 func ZtAuth() {}
 func EmailAddress() {
