@@ -1,55 +1,45 @@
 package cmd
 
 import (
-  "fmt"
-  "bytes"
-  //"os/exec"
-  "net/http"
-  "log"
-  //"io/ioutil"
-  "encoding/json"
-  //"strconv"
-  "errors" 
-  "github.com/spf13/cobra"
-  "github.com/manifoldco/promptui"
+	"bytes"
+	"fmt"
+	"syscall"
+
+	//"os/exec"
+	"log"
+	"net/http"
+
+	"encoding/json"
+	"errors"
+	"os/exec"
+
+	"github.com/manifoldco/promptui"
+	"github.com/spf13/cobra"
 )
+
 //type pepper struct {
 //	Name     string
 //	HeatUnit int
 //	Peppers  int
 //}
 func init() {
-  rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(initCmd)
 }
-
-func MakeRequest() {
-
-	message := map[string]interface{}{
-		"hello": "world",
-		"life":  42,
-		"embedded": map[string]string{
-			"yes": "of course!",
-		},
-	}
-
-	bytesRepresentation, err := json.Marshal(message)
+func HcKeyGen() {
+	cmd := exec.Command("/run/current-system/sw/bin/whoami")
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(401), Gid: uint32(501), NoSetGroups: false}
+	var outb, errb bytes.Buffer
+	cmd.Stdout = &outb
+	cmd.Stderr = &errb
+	err := cmd.Run()
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatal(err)
 	}
-
-	resp, err := http.Post("https://httpbin.org/post", "application/json", bytes.NewBuffer(bytesRepresentation))
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	var result map[string]interface{}
-
-	json.NewDecoder(resp.Body).Decode(&result)
-
-	log.Println(result)
-	log.Println(result["data"])
+	fmt.Println("out:", outb.String(), "err:", errb.String())
 }
-func EmailAddress(){
+func ZtAuth() {}
+func EmailAddress() {
 	validate := func(input string) error {
 		if len(input) < 3 {
 			return errors.New("email address must have more than 3 characters")
@@ -72,29 +62,42 @@ func EmailAddress(){
 	}
 
 	fmt.Printf("Your email address is %q\n", result)
-        message := map[string]interface{}{
+	message := map[string]interface{}{
 		"email": result,
 	}
-	
 
 	bytesRepresentation, err := json.Marshal(message)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	resp, err := http.Post("https://httpbin.org/post", "application/json", bytes.NewBuffer(bytesRepresentation))
+	// resp, err := http.Post("https://httpbin.org/post", "application/json", bytes.NewBuffer(bytesRepresentation))
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-init-email", bytes.NewBuffer(bytesRepresentation))
+	req.Header.Add("Host", "proxy.holohost.net")
+	req.Header.Add("Holo-Init", "wbfGXvzmLk83bUmR")
+	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatal(err)
 	}
-
+	// bodyText, err := ioutil.ReadAll(resp.Body)
+	// s := string(bodyText)
 	var thisresult map[string]interface{}
 
 	json.NewDecoder(resp.Body).Decode(&thisresult)
-
-	log.Println(thisresult)
-
+	if _, ok := thisresult["response"]; ok {
+		log.Println(thisresult["response"])
+	}
+	if _, ok := thisresult["id"]; ok {
+		//i := strconv.Atoi(thisresult["id"])
+		log.Println(thisresult["id"])
+	}
 
 }
+
 //func PassWord(){
 //	validatepw := func(input string) error {
 //		if len(input) < 6 {
@@ -119,13 +122,14 @@ func EmailAddress(){
 //	fmt.Printf("Your password is %q\n", result1)
 //}
 var initCmd = &cobra.Command{
-  Use:   "init",
-  Short: "The initialization command",
-  Long:  `Get your Holoport up and running`,
-  Run: func(cmd *cobra.Command, args []string) {
-    //MakeRequest()
-    EmailAddress()
-    //PassWord()
-    fmt.Println("Test123")
-  },
+	Use:   "init",
+	Short: "The initialization command",
+	Long:  `Get your Holoport up and running`,
+	Run: func(cmd *cobra.Command, args []string) {
+		HcKeyGen()
+		ZtAuth()
+		EmailAddress()
+		//PassWord()
+		//fmt.Println("Test123")
+	},
 }
