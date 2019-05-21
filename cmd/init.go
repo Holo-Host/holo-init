@@ -35,7 +35,9 @@ func HcKeyGen() {
 		fmt.Println(errStr)
 	}
 	matched, merr := regexp.MatchString(`Hc.*`, outStr)
-	fmt.Println(matched, merr)
+	if merr != nil {
+		fmt.Println(merr)
+	}
 	if matched != true {
 		cmd := exec.Command("sudo", "-u", "holochain", "hc", "keygen", "-n")
 		//cmd.SysProcAttr = &syscall.SysProcAttr{}
