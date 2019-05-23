@@ -2,25 +2,32 @@ package cmd
 
 import (
 	"bytes"
-	"fmt"
-
-	"log"
-	"net/http"
-	"regexp"
-
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
+	"net/http"
 	"os/exec"
+	"regexp"
 
+	"github.com/badoux/checkmail"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
 
+type Contact struct {
+	Id       int64  `json:"id"`
+	Response string `json:"response"`
+}
+type Update struct {
+	ContactId int64  `json:"contact_id"`
+	PublicKey string `json:"public_key"`
+}
+
 func init() {
 	rootCmd.AddCommand(initCmd)
 }
-
-func HcKeyGen() {
+func LsCmd() string {
 	lscmd := exec.Command("sudo", "-u", "holochain", "ls", "/home/holochain/.config/holochain/keys")
 	var stdout, stderr bytes.Buffer
 	lscmd.Stdout = &stdout
@@ -34,20 +41,22 @@ func HcKeyGen() {
 	if errStr != "" {
 		fmt.Println(errStr)
 	}
+	return outStr
+}
+func HcKeyGen() {
+	outStr := LsCmd()
 	matched, merr := regexp.MatchString(`Hc.*`, outStr)
 	if merr != nil {
 		fmt.Println(merr)
 	}
 	if matched != true {
 		cmd := exec.Command("sudo", "-u", "holochain", "hc", "keygen", "-n")
-		//cmd.SysProcAttr = &syscall.SysProcAttr{}
-		//cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(401), Gid: uint32(501), NoSetGroups: false}
 		var outb, errb bytes.Buffer
 		cmd.Stdout = &outb
 		cmd.Stderr = &errb
 		err := cmd.Run()
 		if err != nil {
-			//log.Fatal(errb.String())
+			fmt.Println(errb.String())
 		}
 		fmt.Println("out:", outb.String(), "err:", errb.String())
 	} else {
@@ -55,11 +64,58 @@ func HcKeyGen() {
 	}
 	return
 }
-func ZtAuth() {}
+func ZtAuth() {
+	ztcmd := exec.Command("sudo", "zerotier-cli", "info", "-j")
+	var ztstdout, ztstderr bytes.Buffer
+	ztcmd.Stdout = &ztstdout
+	ztcmd.Stderr = &ztstderr
+	zterr := ztcmd.Run()
+	if zterr != nil {
+		fmt.Println(zterr)
+	}
+	//outStr, errStr := string(ztstdout.Bytes()), string(ztstderr.Bytes())
+	//fmt.Printf("zt json:\n%s\n", outStr)
+	//fmt.Println(reflect.TypeOf(outStr).Kind())
+	// if errStr != "" {
+	// 	fmt.Println(errStr)
+	// }
+
+	ztresult := ztstdout.Bytes()
+	ztdata := make(map[string]interface{})
+	jerr := json.Unmarshal(ztresult, &ztdata)
+	if jerr != nil {
+		fmt.Println(jerr)
+	}
+	fmt.Println(ztdata["address"].(string))
+	message := map[string]interface{}{
+		"member_id": ztdata["address"],
+	}
+
+	bytesRepresentation, err := json.Marshal(message)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-zt-auth", bytes.NewBuffer(bytesRepresentation))
+	req.Header.Add("Host", "proxy.holohost.net")
+	req.Header.Add("Holo-Init", "wbfGXvzmLk83bUmR")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var thisresult map[string]interface{}
+
+	json.NewDecoder(resp.Body).Decode(&thisresult)
+	log.Println(thisresult)
+
+}
 func EmailAddress() {
+
 	validate := func(input string) error {
-		if len(input) < 3 {
-			return errors.New("email address must have more than 3 characters")
+		checkerr := checkmail.ValidateFormat(input)
+		if checkerr != nil {
+			return errors.New("invalid email")
 		}
 		return nil
 	}
@@ -88,29 +144,45 @@ func EmailAddress() {
 		log.Fatalln(err)
 	}
 
-	// resp, err := http.Post("https://httpbin.org/post", "application/json", bytes.NewBuffer(bytesRepresentation))
-	// if err != nil {
-	// 	log.Fatalln(err)
-	// }
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-init-email", bytes.NewBuffer(bytesRepresentation))
 	req.Header.Add("Host", "proxy.holohost.net")
 	req.Header.Add("Holo-Init", "wbfGXvzmLk83bUmR")
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
 	}
-	// bodyText, err := ioutil.ReadAll(resp.Body)
-	// s := string(bodyText)
-	var thisresult map[string]interface{}
-
+	var thisresult Contact
 	json.NewDecoder(resp.Body).Decode(&thisresult)
-	if _, ok := thisresult["response"]; ok {
-		log.Println(thisresult["response"])
+	// log.Println(thisresult.Id)
+	// log.Println(thisresult.Response)
+	if thisresult.Response != "" {
+		log.Println(thisresult.Response)
 	}
-	if _, ok := thisresult["id"]; ok {
-		//i := strconv.Atoi(thisresult["id"])
-		log.Println(thisresult["id"])
+	if thisresult.Id != 0 {
+		pk := LsCmd()
+		//fmt.Println(reflect.TypeOf(thisresult.Id))
+		regmessage := &Update{
+			ContactId: thisresult.Id,
+			PublicKey: pk,
+		}
+
+		regbytesRepresentation, brerr := json.Marshal(regmessage)
+		if brerr != nil {
+			fmt.Println(brerr)
+		}
+
+		reg, rerr := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-init-update", bytes.NewBuffer(regbytesRepresentation))
+		reg.Header.Add("Host", "proxy.holohost.net")
+		reg.Header.Add("Holo-Init", "wbfGXvzmLk83bUmR")
+		regresp, rerr := client.Do(reg)
+		if rerr != nil {
+			fmt.Println(rerr)
+		}
+		var regresult map[string]interface{}
+		json.NewDecoder(regresp.Body).Decode(&regresult)
+		log.Println(regresult)
+
 	}
 
 }
