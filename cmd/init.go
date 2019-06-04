@@ -8,7 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"reflect"
 	"regexp"
+	"strings"
 
 	"github.com/badoux/checkmail"
 	"github.com/manifoldco/promptui"
@@ -22,6 +24,24 @@ type Contact struct {
 type Update struct {
 	ContactId int64  `json:"contact_id"`
 	PublicKey string `json:"public_key"`
+}
+
+type Dns struct {
+	Pubkey string `json:"pubkey"`
+}
+
+type ProxyService struct {
+	Name     string `json:"name"`
+	Protocol string `json:"protocol"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+}
+
+type ProxyRoute struct {
+	Name      string   `json:"name"`
+	Protocols []string `json:"protocols"`
+	Hosts     []string `json:"hosts"`
+	Service   string   `json:"service"`
 }
 
 func init() {
@@ -38,6 +58,21 @@ func LsCmd() string {
 	}
 	outStr, errStr := string(stdout.Bytes()), string(stderr.Bytes())
 	fmt.Printf("current keys:\n%s\n", outStr)
+	if errStr != "" {
+		fmt.Println(errStr)
+	}
+	return outStr
+}
+func ZtListNet() string {
+	lscmd := exec.Command("sudo", "zerotier-cli", "listnetworks", "-j")
+	var stdout, stderr bytes.Buffer
+	lscmd.Stdout = &stdout
+	lscmd.Stderr = &stderr
+	lserr := lscmd.Run()
+	if lserr != nil {
+		fmt.Println(lserr)
+	}
+	outStr, errStr := string(stdout.Bytes()), string(stderr.Bytes())
 	if errStr != "" {
 		fmt.Println(errStr)
 	}
@@ -73,12 +108,6 @@ func ZtAuth() {
 	if zterr != nil {
 		fmt.Println(zterr)
 	}
-	//outStr, errStr := string(ztstdout.Bytes()), string(ztstderr.Bytes())
-	//fmt.Printf("zt json:\n%s\n", outStr)
-	//fmt.Println(reflect.TypeOf(outStr).Kind())
-	// if errStr != "" {
-	// 	fmt.Println(errStr)
-	// }
 
 	ztresult := ztstdout.Bytes()
 	ztdata := make(map[string]interface{})
@@ -186,6 +215,139 @@ func EmailAddress() {
 	}
 
 }
+func CloudFlare() {
+	//var publicKey string
+	var match []string
+	var ipaddress string
+	publicKey := LsCmd()
+	//fmt.Println(LsCmd())
+	fmt.Println(ZtListNet())
+	ztcmd := ZtListNet()
+	var ztdata []interface{}
+	//var ztipv4 string
+	jerr := json.Unmarshal([]byte(ztcmd), &ztdata)
+	if jerr != nil {
+		fmt.Println(jerr)
+	}
+	fmt.Println(reflect.TypeOf(ztcmd))
+	//pattern := regexp.MustCompile(`(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}`)
+	pattern := regexp.MustCompile(`\d+\.\d+\.\d+\.\d+`)
+
+	for _, i := range ztdata {
+		if rec, ok := i.(map[string]interface{}); ok {
+			for key, val := range rec {
+				if key == "nwid" && val == "93afae5963c547f1" {
+					log.Printf(" [========>] %s = %s", key, val)
+					for _, item := range rec["assignedAddresses"].([]interface{}) {
+						if str, ok := item.(string); ok {
+							//fmt.Println(pattern.MatchString(str))
+							if pattern.MatchString(str) == true {
+								//ztipv4 = str
+								match = pattern.FindStringSubmatch(str)
+								for _, element := range match {
+									element = strings.Trim(element, "[")
+									element = strings.Trim(element, "]")
+									ipaddress = element
+									//fmt.Println(ipaddress)
+								}
+							}
+						} else {
+							//fmt.Println(item)
+						}
+						//fmt.Println(reflect.TypeOf(item).Kind())
+
+					}
+				}
+			}
+		} else {
+			fmt.Printf("Error with this data: %v\n", i)
+		}
+	}
+	fmt.Println(ipaddress)
+	publicKey = strings.TrimSuffix(publicKey, "\n")
+	dnsclient := &http.Client{}
+	dnsmessage := &Dns{
+		Pubkey: publicKey,
+	}
+
+	dnsbytesRepresentation, brerr := json.Marshal(dnsmessage)
+	if brerr != nil {
+		fmt.Println(brerr)
+	}
+
+	dnsreg, dnsrerr := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-cloudflare-dns-create", bytes.NewBuffer(dnsbytesRepresentation))
+	dnsreg.Header.Add("Host", "proxy.holohost.net")
+	dnsreg.Header.Add("Content-Type", "application/json")
+	dnsreg.Header.Add("Holo-Init", "wbfGXvzmLk83bUmR")
+	regresp, dnsrerr := dnsclient.Do(dnsreg)
+	if dnsrerr != nil {
+		fmt.Println(dnsrerr)
+	}
+	var regresult map[string]interface{}
+	json.NewDecoder(regresp.Body).Decode(&regresult)
+	log.Println(regresult)
+
+	proxyclient := &http.Client{}
+	proxymessage := &ProxyService{
+		Name:     publicKey + ".holohost.net",
+		Protocol: "http",
+		Host:     ipaddress,
+		Port:     48080,
+	}
+
+	proxybytesRepresentation, proxyerr := json.Marshal(proxymessage)
+	if proxyerr != nil {
+		fmt.Println(proxyerr)
+	}
+	log.Println("TRYING PROXY SERVICE CREATE")
+	proxyreg, proxyerr := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-proxy-service-create", bytes.NewBuffer(proxybytesRepresentation))
+	proxyreg.Header.Add("Host", "proxy.holohost.net")
+	proxyreg.Header.Add("Content-Type", "application/json")
+	proxyreg.Header.Add("Holo-Init", "wbfGXvzmLk83bUmR")
+	proxyregresp, proxyerr := proxyclient.Do(proxyreg)
+	if proxyerr != nil {
+		fmt.Println(proxyerr)
+	}
+	var proxyresult map[string]interface{}
+	json.NewDecoder(proxyregresp.Body).Decode(&proxyresult)
+	log.Println(proxyresult["id"])
+	var serviceId string
+	if sidstr, ok := proxyresult["id"].(string); ok {
+		serviceId = sidstr
+	} else {
+
+	}
+	proxyrclient := &http.Client{}
+	var downcasepubkey string
+	downcasepubkey = strings.ToLower(publicKey)
+	proxyrmessage := &ProxyRoute{
+		Name:      publicKey + ".holohost.net",
+		Protocols: []string{"http", "https"},
+		Hosts:     []string{"*." + downcasepubkey + ".holohost.net"},
+		Service:   serviceId,
+	}
+
+	proxyrbytesRepresentation, proxyrerr := json.Marshal(proxyrmessage)
+	if proxyrerr != nil {
+		fmt.Println(proxyrerr)
+	}
+	log.Println("TRYING PROXY ROUTE CREATE")
+	proxyrreg, proxyrerr := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-proxy-route-create", bytes.NewBuffer(proxyrbytesRepresentation))
+	proxyrreg.Header.Add("Host", "proxy.holohost.net")
+	proxyrreg.Header.Add("Content-Type", "application/json")
+	proxyrreg.Header.Add("Holo-Init", "wbfGXvzmLk83bUmR")
+	proxyrregresp, proxyrerr := proxyrclient.Do(proxyrreg)
+	if proxyrerr != nil {
+		fmt.Println(proxyrerr)
+	}
+	var proxyrresult map[string]interface{}
+	json.NewDecoder(proxyrregresp.Body).Decode(&proxyrresult)
+	log.Println(proxyrresult)
+	//fmt.Println(ztipv4)
+	//fmt.Println(ipaddress)
+	//fmt.Println(publicKey)
+
+}
 
 //func PassWord(){
 //	validatepw := func(input string) error {
@@ -218,6 +380,7 @@ var initCmd = &cobra.Command{
 		HcKeyGen()
 		ZtAuth()
 		EmailAddress()
+		CloudFlare()
 		//PassWord()
 		//fmt.Println("Test123")
 	},
