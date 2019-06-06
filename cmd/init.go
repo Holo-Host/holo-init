@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/badoux/checkmail"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
@@ -42,6 +43,78 @@ type ProxyRoute struct {
 	Protocols []string `json:"protocols"`
 	Hosts     []string `json:"hosts"`
 	Service   string   `json:"service"`
+}
+
+type agents struct {
+	Id             string `toml:"id"`
+	Name           string `toml:"name"`
+	Keystore_file  string `toml:"keystore_file"`
+	Public_address string `toml:"public_address"`
+}
+
+type bridges struct {
+	CallerId string `toml:"caller_id"`
+	CalleeId string `toml:"callee_id"`
+	Handle   string `toml:"handle"`
+}
+
+type dnas struct {
+	File string `toml:"file"`
+	id   string `toml:"id"`
+}
+
+type driver struct {
+	Port int    `toml:"port"`
+	Type string `toml:"type"`
+}
+
+type storage struct {
+	Path string `toml:"path"`
+	Type string `toml:"type"`
+}
+
+type instances struct {
+	Agent   string   `toml:"agent"`
+	Dna     string   `toml:"dna"`
+	Id      string   `toml:"id"`
+	Storage *storage `toml:"storage"`
+}
+type interfaces struct {
+	Id        string       `toml:"id"`
+	Admin     bool         `toml:"admin"`
+	Driver    *driver      `toml:"driver"`
+	Instances []*instances `toml:"instances"`
+}
+
+type network struct {
+	Bootstrap_nodes      []string `toml:"bootstrap_nodes"`
+	N3h_persistence_path string   `toml:"n3h_persistence_path"`
+}
+
+type ui_bundles struct {
+	Id       string `toml:"id"`
+	Hash     string `toml:"hash"`
+	Root_dir string `toml:"root_dir"`
+}
+
+type ui_interfaces struct {
+	Bundle        string `toml:"bundle"`
+	Dna_interface string `toml:"dna_interface"`
+	Id            string `toml:"id"`
+	Port          int    `toml:"port"`
+}
+
+type Config struct {
+	PD             string          `toml:"persistence_dir"`
+	Agents         []agents        `toml:"agents"`
+	Bridges        []bridges       `toml:"bridges"`
+	Dnas           []dnas          `toml:"dnas"`
+	Instances      []instances     `toml:"instances"`
+	Interfaces     []interfaces    `toml:"interfaces"`
+	SigningService string          `toml:"signing_service_uri"`
+	Network        network         `toml:"network"`
+	UiBundles      []ui_bundles    `toml:"ui_bundles"`
+	UIInterfaces   []ui_interfaces `toml:"ui_interfaces"`
 }
 
 func init() {
@@ -348,6 +421,21 @@ func CloudFlare() {
 	//fmt.Println(publicKey)
 
 }
+func ConfigRewrite() {
+	var config Config
+	if _, err := toml.DecodeFile("/var/lib/holochain/conductor-config.toml", &config); err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("persistence_dir: %s \n agents: %s \n bridges: %s \n dnas: %s \n instances: %s \n interfaces: %s \n network: %s \n signing_service: %s \n ui_interfaces: %s \n ui_bundles: %s \n",
+		config.PD, config.Agents, config.Bridges, config.Dnas, config.Instances, config.Interfaces, config.Network, config.SigningService, config.UIInterfaces, config.UiBundles)
+	fmt.Println(LsCmd())
+	buf := new(bytes.Buffer)
+	if encerr := toml.NewEncoder(buf).Encode(config); encerr != nil {
+		log.Fatal(encerr)
+	}
+	fmt.Println(buf.String())
+}
 
 //func PassWord(){
 //	validatepw := func(input string) error {
@@ -377,10 +465,11 @@ var initCmd = &cobra.Command{
 	Short: "The initialization command",
 	Long:  `Get your Holoport up and running`,
 	Run: func(cmd *cobra.Command, args []string) {
-		HcKeyGen()
-		ZtAuth()
-		EmailAddress()
-		CloudFlare()
+		// HcKeyGen()
+		// ZtAuth()
+		// EmailAddress()
+		// CloudFlare()
+		ConfigRewrite()
 		//PassWord()
 		//fmt.Println("Test123")
 	},
