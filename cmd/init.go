@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os/exec"
@@ -60,7 +61,7 @@ type bridges struct {
 
 type dnas struct {
 	File string `toml:"file"`
-	id   string `toml:"id"`
+	Id   string `toml:"id"`
 }
 
 type driver struct {
@@ -79,11 +80,14 @@ type instances struct {
 	Id      string   `toml:"id"`
 	Storage *storage `toml:"storage"`
 }
+type intefaces_instances struct {
+	Id string `toml:"id"`
+}
 type interfaces struct {
-	Id        string       `toml:"id"`
-	Admin     bool         `toml:"admin"`
-	Driver    *driver      `toml:"driver"`
-	Instances []*instances `toml:"instances"`
+	Id        string                `toml:"id"`
+	Admin     bool                  `toml:"admin"`
+	Driver    *driver               `toml:"driver"`
+	Instances []intefaces_instances `toml:"instances"`
 }
 
 type network struct {
@@ -114,7 +118,7 @@ type Config struct {
 	SigningService string          `toml:"signing_service_uri"`
 	Network        network         `toml:"network"`
 	UiBundles      []ui_bundles    `toml:"ui_bundles"`
-	UIInterfaces   []ui_interfaces `toml:"ui_interfaces"`
+	UiInterfaces   []ui_interfaces `toml:"ui_interfaces"`
 }
 
 func init() {
@@ -428,13 +432,153 @@ func ConfigRewrite() {
 		return
 	}
 	fmt.Printf("persistence_dir: %s \n agents: %s \n bridges: %s \n dnas: %s \n instances: %s \n interfaces: %s \n network: %s \n signing_service: %s \n ui_interfaces: %s \n ui_bundles: %s \n",
-		config.PD, config.Agents, config.Bridges, config.Dnas, config.Instances, config.Interfaces, config.Network, config.SigningService, config.UIInterfaces, config.UiBundles)
+		config.PD, config.Agents, config.Bridges, config.Dnas, config.Instances, config.Interfaces, config.Network, config.SigningService, config.UiInterfaces, config.UiBundles)
 	fmt.Println(LsCmd())
 	buf := new(bytes.Buffer)
-	if encerr := toml.NewEncoder(buf).Encode(config); encerr != nil {
-		log.Fatal(encerr)
+	var signing_service string
+	signing_service = "http://localhost:8888"
+	publicKey := LsCmd()
+	publicKey = strings.TrimSuffix(publicKey, "\n")
+	initconf := Config{
+		PD:             config.PD,
+		SigningService: signing_service,
+		Agents: []agents{
+			{
+				Id:             "host-agent",
+				Name:           "Envoy Host",
+				Keystore_file:  "/home/holochain/.config/holochain/keys/" + publicKey,
+				Public_address: publicKey,
+			},
+		},
+		Bridges: config.Bridges,
+		Network: network{
+			//Bootstrap_nodes: [],
+			N3h_persistence_path: "/home/holochain/.n3h",
+		},
+		Dnas: []dnas{
+			{
+				File: "/run/current-system/sw/bin/envoy/HHA-dna-src.dna.json",
+				Id:   "holo-hosting-app",
+			},
+			{
+				File: "/run/current-system/sw/bin/envoy/HAS-dna-src.dna.json",
+				Id:   "happ-store",
+			},
+			{
+				File: "/run/current-system/sw/bin/envoy/holofuel.dna.json",
+				Id:   "holofuel",
+			},
+		},
+		Instances: []instances{
+			{
+				Agent: "host-agent",
+				Dna:   "holo-hosting-app",
+				Id:    "holo-hosting-app",
+				Storage: &storage{
+					Path: "/var/lib/holochain/storage/holo-hosting-app",
+					Type: "file",
+				},
+			},
+			{
+				Agent: "host-agent",
+				Dna:   "happ-store",
+				Id:    "happ-store",
+				Storage: &storage{
+					Path: "/var/lib/holochain/storage/happ-store",
+					Type: "file",
+				},
+			},
+			{
+				Agent: "host-agent",
+				Dna:   "holofuel",
+				Id:    "holofuel",
+				Storage: &storage{
+					Path: "/var/lib/holochain/storage/holofuel",
+					Type: "file",
+				},
+			},
+		},
+		Interfaces: []interfaces{
+			{
+				Id:    "master-interface",
+				Admin: true,
+				Instances: []intefaces_instances{
+					{Id: "holo-hosting-app"},
+					{Id: "happ-store"},
+				},
+				Driver: &driver{
+					Port: 1111,
+					Type: "websocket",
+				},
+			},
+			{
+				Id: "public-interface",
+				Driver: &driver{
+					Port: 2222,
+					Type: "websocket",
+				},
+			},
+			{
+				Id: "internal-interface",
+				Driver: &driver{
+					Port: 3333,
+					Type: "websocket",
+				},
+			},
+		},
+		UiBundles: []ui_bundles{
+			{
+				Hash:     "Qm000",
+				Id:       "hha-ui",
+				Root_dir: "hha-ui",
+			},
+			{
+				Hash:     "Qm001",
+				Id:       "happ-store-ui",
+				Root_dir: "happ-store-ui",
+			},
+		},
+		UiInterfaces: []ui_interfaces{
+			{
+				Bundle:        "hha-ui",
+				Dna_interface: "master-interface",
+				Id:            "hha-ui-interface",
+				Port:          8800,
+			},
+			{
+				Bundle:        "happ-store-ui",
+				Dna_interface: "master-interface",
+				Id:            "happ-store-ui-interface",
+				Port:          8880,
+			},
+		},
+	}
+	if encerr := toml.NewEncoder(buf).Encode(initconf); encerr != nil {
+		log.Println(encerr)
 	}
 	fmt.Println(buf.String())
+	message := []byte(buf.String())
+	werr := ioutil.WriteFile("/var/lib/holochain/conductor-config.toml", message, 0775)
+	if werr != nil {
+		log.Println(werr)
+	}
+	cmd := exec.Command("sudo", "-u", "root", "systemctl", "restart", "holochain.service")
+	// cmd.Stdout = &outb
+	// cmd.Stderr = &errb
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	cerr := cmd.Run()
+	if cerr != nil {
+		fmt.Println(cerr)
+	}
+	outStr, errStr := string(stdout.Bytes()), string(stderr.Bytes())
+	//fmt.Printf("Result:\n%s\n", outStr)
+	fmt.Println("Your Holoport is now initialized")
+	if errStr != "" {
+		fmt.Println(errStr)
+	}
+
 }
 
 //func PassWord(){
@@ -465,10 +609,10 @@ var initCmd = &cobra.Command{
 	Short: "The initialization command",
 	Long:  `Get your Holoport up and running`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// HcKeyGen()
-		// ZtAuth()
-		// EmailAddress()
-		// CloudFlare()
+		HcKeyGen()
+		ZtAuth()
+		EmailAddress()
+		CloudFlare()
 		ConfigRewrite()
 		//PassWord()
 		//fmt.Println("Test123")
