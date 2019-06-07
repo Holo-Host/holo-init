@@ -573,7 +573,7 @@ func ConfigRewrite() {
 		fmt.Println(cerr)
 	}
 	outStr, errStr := string(stdout.Bytes()), string(stderr.Bytes())
-	//fmt.Printf("Result:\n%s\n", outStr)
+	fmt.Printf("\n%s\n", outStr)
 	fmt.Println("Your Holoport is now initialized")
 	if errStr != "" {
 		fmt.Println(errStr)
