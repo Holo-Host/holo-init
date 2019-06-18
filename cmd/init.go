@@ -530,12 +530,12 @@ func ConfigRewrite() {
 			{
 				Hash:     "Qm000",
 				Id:       "hha-ui",
-				Root_dir: "hha-ui",
+				Root_dir: "/run/current-system/sw/bin/envoy/hha-ui",
 			},
 			{
 				Hash:     "Qm001",
 				Id:       "happ-store-ui",
-				Root_dir: "happ-store-ui",
+				Root_dir: "/run/current-system/sw/bin/envoy/has-ui",
 			},
 		},
 		UiInterfaces: []ui_interfaces{
