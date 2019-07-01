@@ -457,15 +457,15 @@ func ConfigRewrite() {
 		},
 		Dnas: []dnas{
 			{
-				File: "/run/current-system/sw/bin/envoy/HHA-dna-src.dna.json",
+				File: "/run/current-system/sw/bin/envoy/src/config/.envoy-deps/holo-hosting.dna.json",
 				Id:   "holo-hosting-app",
 			},
 			{
-				File: "/run/current-system/sw/bin/envoy/HAS-dna-src.dna.json",
+				File: "/run/current-system/sw/bin/envoy/src/config/.envoy-deps/happ-store.dna.json",
 				Id:   "happ-store",
 			},
 			{
-				File: "/run/current-system/sw/bin/envoy/holofuel.dna.json",
+				File: "/run/current-system/sw/bin/envoy/src/config/.envoy-deps/holofuel.dna.json",
 				Id:   "holofuel",
 			},
 		},
@@ -530,12 +530,12 @@ func ConfigRewrite() {
 			{
 				Hash:     "Qm000",
 				Id:       "hha-ui",
-				Root_dir: "/run/current-system/sw/bin/envoy/hha-ui",
+				Root_dir: "/run/current-system/sw/bin/envoy/src/config/.envoy-deps/holo-hosting-ui",
 			},
 			{
 				Hash:     "Qm001",
 				Id:       "happ-store-ui",
-				Root_dir: "/run/current-system/sw/bin/envoy/has-ui",
+				Root_dir: "/run/current-system/sw/bin/envoy/src/config/.envoy-deps/happ-store-ui",
 			},
 		},
 		UiInterfaces: []ui_interfaces{
