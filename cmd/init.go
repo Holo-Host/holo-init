@@ -352,7 +352,7 @@ func CloudFlare() {
 		fmt.Println(brerr)
 	}
 
-	dnsreg, dnsrerr := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-cloudflare-dns-create", bytes.NewBuffer(dnsbytesRepresentation))
+	dnsreg, dnsrerr := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-init-cloudflare-dns-create", bytes.NewBuffer(dnsbytesRepresentation))
 	dnsreg.Header.Add("Host", "proxy.holohost.net")
 	dnsreg.Header.Add("Content-Type", "application/json")
 	dnsreg.Header.Add("Holo-Init", "wbfGXvzmLk83bUmR")
