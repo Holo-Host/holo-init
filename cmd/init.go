@@ -377,7 +377,7 @@ func CloudFlare() {
 		fmt.Println(proxyerr)
 	}
 	log.Println("TRYING PROXY SERVICE CREATE")
-	proxyreg, proxyerr := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-proxy-service-create", bytes.NewBuffer(proxybytesRepresentation))
+	proxyreg, proxyerr := http.NewRequest("POST", "http://proxy.holohost.net/zato/holo-init-proxy-service-create", bytes.NewBuffer(proxybytesRepresentation))
 	proxyreg.Header.Add("Host", "proxy.holohost.net")
 	proxyreg.Header.Add("Content-Type", "application/json")
 	proxyreg.Header.Add("Holo-Init", "wbfGXvzmLk83bUmR")
